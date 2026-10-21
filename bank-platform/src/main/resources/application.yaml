@@ -1,0 +1,51 @@
+
+spring:
+  application:
+    name: banking-platform
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/point_bank}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:Pranathi@2005}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+  endpoint:
+    health:
+      show-details: always
+
+info:
+  app:
+    name: Capital Bank Application
+    description: Banking Microservices
+    version: 1.0.0
+
+
+server:
+  port: 8080
+
+app:
+  kyc:
+    storage-directory: ${KYC_STORAGE_DIRECTORY:./var/kyc-documents}
