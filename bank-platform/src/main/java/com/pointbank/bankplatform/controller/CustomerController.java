@@ -102,14 +102,14 @@ public class CustomerController {
             )
     })
     public ApiResponseDto<KycDocumentResponse> uploadKycDocument(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestParam KycDocumentType documentType,
             @RequestParam("file") MultipartFile file
     ) {
-        return ApiResponseDto.success(
-                "KYC document uploaded and submitted for review.",
-                customerService.uploadKycDocument(id, documentType, file)
-        );
+       
+         KycDocumentResponse response =  customerService.uploadKycDocument(id, documentType, file);
+
+         return  ApiResponseDto.success("documents upload sucessfully", response);
     }
 
     @GetMapping("/{id}")

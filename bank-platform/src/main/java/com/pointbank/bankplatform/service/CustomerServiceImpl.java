@@ -39,7 +39,7 @@ public class CustomerServiceImpl implements CustomerService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
-    private static final int CUSTOMER_ID_GENERATION_ATTEMPTS = 10;
+    private static final int CUSTOMER_ID_GENERATION_ATTEMPTS = 3;
     private static final String MOBILE_NUMBER_PATTERN = "^[6-9]\\d{9}$";
     private static final SecureRandom CUSTOMER_ID_RANDOM = new SecureRandom();
     private static final List<String> ALLOWED_SORT_PROPERTIES = List.of(
@@ -192,7 +192,7 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional
     public KycDocumentResponse uploadKycDocument(
-            UUID customerId,
+            Long customerId,
             KycDocumentType documentType,
             MultipartFile file
     ) {
@@ -200,7 +200,7 @@ public class CustomerServiceImpl implements CustomerService {
             throw new InvalidRequestException("Customer ID, KYC document type, and file are required.");
         }
 
-        Customer customer = customerRepository.findById(customerId)
+        Customer customer = customerRepository.findByCustomerId(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found."));
         if (customer.getKycStatus() == KycStatus.VERIFIED) {
             throw new ResourceConflictException("KYC is already verified for this customer.");
@@ -304,13 +304,20 @@ public class CustomerServiceImpl implements CustomerService {
                 });
     }
 
-    private Long generateCustomerId() {
-        for (int attempt = 0; attempt < CUSTOMER_ID_GENERATION_ATTEMPTS; attempt++) {
-            long candidate = CUSTOMER_ID_RANDOM.nextLong(1_000_000_000L, Long.MAX_VALUE);
-            if (!customerRepository.existsByCustomerId(candidate)) {
-                return candidate;
-            }
-        }
-        throw new IllegalStateException("Unable to generate a unique customer ID.");
+   private Long generateCustomerId() {
+
+    for (int attempts = 0 ; attempts < CUSTOMER_ID_GENERATION_ATTEMPTS; attempts++) {
+
+        long customerId = 10000000L + CUSTOMER_ID_RANDOM.nextLong(99999999L);
+
+        if (!customerRepository.existsByCustomerId(customerId)) {
+
+        return customerId;
     }
 }
+
+    throw new IllegalStateException("Customer Id is already existed");
+}
+  
+}
+

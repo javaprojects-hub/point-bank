@@ -27,7 +27,7 @@ public interface CustomerService {
 
     CustomerResponse updateCustomer(UUID id, CustomerUpdateRequest request);
 
-    KycDocumentResponse uploadKycDocument(UUID customerId, KycDocumentType documentType, MultipartFile file);
+    KycDocumentResponse uploadKycDocument(Long customerId, KycDocumentType documentType, MultipartFile file);
 
     CustomerResponse verifyKyc(UUID customerId);
 }
