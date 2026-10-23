@@ -49,3 +49,12 @@ server:
 app:
   kyc:
     storage-directory: ${KYC_STORAGE_DIRECTORY:./var/kyc-documents}
+  security:
+    jwt:
+      issuer-uri: ${JWT_ISSUER_URI:}
+      roles-claim: ${JWT_ROLES_CLAIM:roles}
+
+logging:
+  level:
+    com.pointbank.bankplatform: DEBUG
+    org.hibernate.SQL: DEBUG

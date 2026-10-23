@@ -45,4 +45,10 @@ public class KycDocument extends AuditableEntity {
 
     @Column(name = "size_bytes", nullable = false)
     private long sizeBytes;
+
+    @Column(name = "version_number", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 1")
+    private int versionNumber = 1;
+
+    @Column(name = "current_version", nullable = false, columnDefinition = "BOOLEAN NOT NULL DEFAULT TRUE")
+    private boolean currentVersion = true;
 }

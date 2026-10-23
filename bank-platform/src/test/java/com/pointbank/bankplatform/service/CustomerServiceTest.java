@@ -17,6 +17,8 @@ import com.pointbank.bankplatform.constant.KycDocumentType;
 import com.pointbank.bankplatform.constant.KycStatus;
 import com.pointbank.bankplatform.dto.CustomerRequest;
 import com.pointbank.bankplatform.dto.CustomerResponse;
+import com.pointbank.bankplatform.dto.KycDocumentSummaryResponse;
+import com.pointbank.bankplatform.dto.KycStatusResponse;
 import com.pointbank.bankplatform.entity.Customer;
 import com.pointbank.bankplatform.entity.KycDocument;
 import com.pointbank.bankplatform.exception.InvalidRequestException;
@@ -92,9 +94,9 @@ class CustomerServiceTest {
 
     @Test
     void uploadingOneKycDocumentSubmitsCustomerForReview() {
-        UUID id = UUID.randomUUID();
+        Long customerId = 123L;
         Customer customer = new Customer();
-        customer.setId(id);
+        customer.setCustomerId(customerId);
         customer.setCustomerStatus(CustomerStatus.CREATED);
         customer.setKycStatus(KycStatus.CREATED);
         MockMultipartFile file = new MockMultipartFile(
@@ -102,7 +104,7 @@ class CustomerServiceTest {
         );
         KycDocumentStorageService.StoredKycDocument storedDocument =
                 new KycDocumentStorageService.StoredKycDocument("uuid.pdf", "application/pdf", 5);
-        when(customerRepository.findById(id)).thenReturn(Optional.of(customer));
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
         when(kycDocumentStorageService.store(KycDocumentType.PAN, file)).thenReturn(storedDocument);
         when(kycDocumentRepository.save(any(KycDocument.class))).thenAnswer(invocation -> {
             KycDocument document = invocation.getArgument(0);
@@ -110,7 +112,7 @@ class CustomerServiceTest {
             return document;
         });
 
-        customerService.uploadKycDocument(id, KycDocumentType.PAN, file);
+        customerService.uploadKycDocument(customerId, KycDocumentType.PAN, file);
 
         assertEquals(CustomerStatus.CREATED, customer.getCustomerStatus());
         assertEquals(KycStatus.IN_PROGRESS, customer.getKycStatus());
@@ -119,38 +121,170 @@ class CustomerServiceTest {
 
     @Test
     void verifyingKycRequiresAtLeastOneUploadedDocument() {
+        Long customerId = 123L;
         UUID id = UUID.randomUUID();
         Customer customer = new Customer();
         customer.setId(id);
+        customer.setCustomerId(customerId);
         customer.setKycStatus(KycStatus.CREATED);
-        when(customerRepository.findById(id)).thenReturn(Optional.of(customer));
-        when(kycDocumentRepository.existsByCustomer_Id(id)).thenReturn(false);
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.existsByCustomer_CustomerIdAndCurrentVersionTrue(customerId)).thenReturn(false);
 
-        assertThrows(InvalidRequestException.class, () -> customerService.verifyKyc(id));
+        assertThrows(
+                InvalidRequestException.class,
+                () -> customerService.verifyKyc(customerId, "reviewer")
+        );
         assertEquals(KycStatus.CREATED, customer.getKycStatus());
     }
 
     @Test
     void verifyingSubmittedKycMarksCustomerAndKycVerified() {
+        Long customerId = 123L;
         UUID id = UUID.randomUUID();
         Customer customer = new Customer();
         customer.setId(id);
+        customer.setCustomerId(customerId);
         customer.setKycStatus(KycStatus.IN_PROGRESS);
         CustomerResponse response = new CustomerResponse(
                 id, 123L, "Asha", null, "Rao", "Female",
                 java.time.LocalDate.of(1990, 1, 1), "9876543210", "asha@example.com", List.of(),
                 CustomerStatus.VERIFIED, KycStatus.VERIFIED
         );
-        when(customerRepository.findById(id)).thenReturn(Optional.of(customer));
-        when(kycDocumentRepository.existsByCustomer_Id(id)).thenReturn(true);
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.existsByCustomer_CustomerIdAndCurrentVersionTrue(customerId)).thenReturn(true);
         when(customerMapper.toResponse(customer)).thenReturn(response);
 
-        CustomerResponse result = customerService.verifyKyc(id);
+        CustomerResponse result = customerService.verifyKyc(customerId, "reviewer");
 
         assertEquals(response, result);
         assertEquals(CustomerStatus.VERIFIED, customer.getCustomerStatus());
         assertEquals(KycStatus.VERIFIED, customer.getKycStatus());
         org.junit.jupiter.api.Assertions.assertNotNull(customer.getKycVerifiedAt());
+    }
+
+    @Test
+    void rejectingKycPersistsReasonAndReviewer() {
+        Long customerId = 123L;
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        customer.setKycStatus(KycStatus.IN_PROGRESS);
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.existsByCustomer_CustomerIdAndCurrentVersionTrue(customerId)).thenReturn(true);
+
+        KycStatusResponse response = customerService.rejectKyc(customerId, "Image is unreadable", "reviewer-1");
+
+        assertEquals(KycStatus.REJECTED, customer.getKycStatus());
+        assertEquals("Image is unreadable", customer.getKycRejectionReason());
+        assertEquals("reviewer-1", customer.getKycReviewedBy());
+        assertEquals("Image is unreadable", response.rejectionReason());
+    }
+
+    @Test
+    void resubmittingKycAppendsVersionAndReactivatesReview() {
+        Long customerId = 123L;
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        customer.setKycStatus(KycStatus.REJECTED);
+        KycDocument previousVersion = new KycDocument();
+        previousVersion.setId(UUID.randomUUID());
+        previousVersion.setDocumentType(KycDocumentType.PAN);
+        previousVersion.setVersionNumber(1);
+        previousVersion.setCurrentVersion(true);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "pan.pdf", "application/pdf", new byte[] {'%', 'P', 'D', 'F', '-'}
+        );
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.findAllByCustomer_CustomerIdAndDocumentTypeOrderByVersionNumberDesc(
+                customerId, KycDocumentType.PAN
+        )).thenReturn(List.of(previousVersion));
+        when(kycDocumentStorageService.store(KycDocumentType.PAN, file)).thenReturn(
+                new KycDocumentStorageService.StoredKycDocument("uuid-v2.pdf", "application/pdf", 5)
+        );
+        when(kycDocumentRepository.save(any(KycDocument.class))).thenAnswer(invocation -> {
+            KycDocument document = invocation.getArgument(0);
+            document.setId(UUID.randomUUID());
+            return document;
+        });
+
+        customerService.resubmitKyc(customerId, KycDocumentType.PAN, file);
+
+        assertEquals(KycStatus.IN_PROGRESS, customer.getKycStatus());
+        org.junit.jupiter.api.Assertions.assertFalse(previousVersion.isCurrentVersion());
+        org.mockito.ArgumentCaptor<KycDocument> savedDocuments =
+                org.mockito.ArgumentCaptor.forClass(KycDocument.class);
+        verify(kycDocumentRepository, org.mockito.Mockito.times(2)).save(savedDocuments.capture());
+        assertEquals(2, savedDocuments.getAllValues().getLast().getVersionNumber());
+    }
+
+    @Test
+    void deletingDocumentBeforeVerificationRemovesMetadataAndFile() {
+        Long customerId = 123L;
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        customer.setKycStatus(KycStatus.IN_PROGRESS);
+        KycDocument document = new KycDocument();
+        UUID documentId = UUID.randomUUID();
+        document.setId(documentId);
+        document.setCustomer(customer);
+        document.setDocumentType(KycDocumentType.PAN);
+        document.setStoredFileName("stored.pdf");
+        document.setCurrentVersion(true);
+        when(customerRepository.findByCustomerIdForUpdate(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.findByIdAndCustomer_CustomerId(documentId, customerId))
+                .thenReturn(Optional.of(document));
+        when(kycDocumentRepository.findAllByCustomer_CustomerIdAndDocumentTypeOrderByVersionNumberDesc(
+                customerId, KycDocumentType.PAN
+        )).thenReturn(List.of(document));
+        when(kycDocumentRepository.existsByCustomer_CustomerIdAndCurrentVersionTrue(customerId)).thenReturn(false);
+
+        customerService.deleteKycDocument(customerId, documentId);
+
+        assertEquals(KycStatus.CREATED, customer.getKycStatus());
+        verify(kycDocumentRepository).delete(document);
+        verify(kycDocumentStorageService).delete("stored.pdf");
+    }
+
+    @Test
+    void retrievesKycStatusByPublicCustomerId() {
+        Long customerId = 123L;
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        customer.setKycStatus(KycStatus.REJECTED);
+        customer.setKycRejectionReason("Image is unreadable");
+        when(customerRepository.findByCustomerId(customerId)).thenReturn(Optional.of(customer));
+
+        KycStatusResponse response = customerService.getKycStatus(customerId);
+
+        assertEquals(customerId, response.customerId());
+        assertEquals(KycStatus.REJECTED, response.status());
+        assertEquals("Image is unreadable", response.rejectionReason());
+    }
+
+    @Test
+    void listsKycDocumentVersionMetadataWithoutExposingStoredFileName() {
+        Long customerId = 123L;
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        KycDocument document = new KycDocument();
+        UUID documentId = UUID.randomUUID();
+        document.setId(documentId);
+        document.setCustomer(customer);
+        document.setDocumentType(KycDocumentType.PAN);
+        document.setStoredFileName("private-stored-name.pdf");
+        document.setMediaType("application/pdf");
+        document.setSizeBytes(1024);
+        document.setVersionNumber(2);
+        document.setCurrentVersion(true);
+        when(customerRepository.findByCustomerId(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.findAllByCustomer_CustomerIdOrderByCreatedAtDesc(customerId))
+                .thenReturn(List.of(document));
+
+        List<KycDocumentSummaryResponse> documents = customerService.getKycDocuments(customerId);
+
+        assertEquals(1, documents.size());
+        assertEquals(documentId, documents.getFirst().id());
+        assertEquals(2, documents.getFirst().version());
+        org.junit.jupiter.api.Assertions.assertTrue(documents.getFirst().currentVersion());
     }
 
     @Test

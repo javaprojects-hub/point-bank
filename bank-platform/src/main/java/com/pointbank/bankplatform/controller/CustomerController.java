@@ -1,6 +1,8 @@
 package com.pointbank.bankplatform.controller;
 
 import java.net.URI;
+import java.security.Principal;
+import java.util.List;
 import java.util.UUID;
 
 import com.pointbank.bankplatform.constant.KycDocumentType;
@@ -9,6 +11,9 @@ import com.pointbank.bankplatform.dto.CustomerRequest;
 import com.pointbank.bankplatform.dto.CustomerResponse;
 import com.pointbank.bankplatform.dto.CustomerUpdateRequest;
 import com.pointbank.bankplatform.dto.KycDocumentResponse;
+import com.pointbank.bankplatform.dto.KycDocumentSummaryResponse;
+import com.pointbank.bankplatform.dto.KycRejectionRequest;
+import com.pointbank.bankplatform.dto.KycStatusResponse;
 import com.pointbank.bankplatform.exception.ApiErrorResponse;
 import com.pointbank.bankplatform.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +28,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +40,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,6 +57,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 @Validated
 @Tag(name = "Customers", description = "Create, retrieve, list, and update customers.")
 public class CustomerController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CustomerController.class);
 
     private final CustomerService customerService;
 
@@ -81,7 +93,7 @@ public class CustomerController {
                 .body(ApiResponseDto.success("Customer created successfully.", customer));
     }
 
-    @PostMapping(value = "/{id}/kyc/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/{customerId}/kyc/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Upload a PAN or Aadhaar document for KYC review")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "KYC document uploaded for review"),
@@ -101,15 +113,118 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
     public ApiResponseDto<KycDocumentResponse> uploadKycDocument(
-            @PathVariable Long id,
+            @PathVariable @Positive Long customerId,
             @RequestParam KycDocumentType documentType,
             @RequestParam("file") MultipartFile file
     ) {
-       
-         KycDocumentResponse response =  customerService.uploadKycDocument(id, documentType, file);
+        LOGGER.info("Received KYC document upload request: customerId={}, documentType={}", customerId, documentType);
+        KycDocumentResponse response = customerService.uploadKycDocument(customerId, documentType, file);
+        LOGGER.info(
+                "KYC document upload request completed: customerId={}, documentId={}",
+                customerId,
+                response.id()
+        );
+        return ApiResponseDto.success("documents upload sucessfully", response);
+    }
 
-         return  ApiResponseDto.success("documents upload sucessfully", response);
+    @PostMapping("/{customerId}/kyc/verify")
+    @Operation(summary = "Verify a customer's KYC documents")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Customer KYC verified"),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "KYC documents must be uploaded before verification",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Customer not found",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            )
+    })
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<CustomerResponse> verifyKyc(
+            @Parameter(description = "Positive customer ID", required = true)
+            @PathVariable @Positive Long customerId,
+            Principal principal
+    ) {
+        LOGGER.info("Received KYC verification request: customerId={}", customerId);
+        CustomerResponse response = customerService.verifyKyc(customerId, principal.getName());
+        LOGGER.info(
+                "KYC verification request completed: customerId={}, kycStatus={}",
+                customerId,
+                response.kycStatus()
+        );
+        return ApiResponseDto.success(
+                "Customer KYC verified successfully.",
+                response
+        );
+    }
+
+    @GetMapping("/{customerId}/kyc/status")
+    @Operation(summary = "Get KYC status and latest review decision")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<KycStatusResponse> getKycStatus(@PathVariable @Positive Long customerId) {
+        return ApiResponseDto.success(
+                "KYC status retrieved successfully.",
+                customerService.getKycStatus(customerId)
+        );
+    }
+
+    @GetMapping("/{customerId}/kyc/documents")
+    @Operation(summary = "List KYC document versions and metadata")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<List<KycDocumentSummaryResponse>> getKycDocuments(
+            @PathVariable @Positive Long customerId
+    ) {
+        return ApiResponseDto.success(
+                "KYC documents retrieved successfully.",
+                customerService.getKycDocuments(customerId)
+        );
+    }
+
+    @DeleteMapping("/{customerId}/kyc/documents/{documentId}")
+    @Operation(summary = "Delete a KYC document before verification")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<String> deleteKycDocument(
+            @PathVariable @Positive Long customerId,
+            @PathVariable UUID documentId
+    ) {
+        customerService.deleteKycDocument(customerId, documentId);
+        return ApiResponseDto.success("KYC document deleted successfully.", "Deleted");
+    }
+
+    @PostMapping("/{customerId}/kyc/reject")
+    @Operation(summary = "Reject a KYC submission with a reason")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<KycStatusResponse> rejectKyc(
+            @PathVariable @Positive Long customerId,
+            @Valid @RequestBody KycRejectionRequest request,
+            Principal principal
+    ) {
+        return ApiResponseDto.success(
+                "KYC submission rejected.",
+                customerService.rejectKyc(customerId, request.reason(), principal.getName())
+        );
+    }
+
+    @PostMapping(
+            value = "/{customerId}/kyc/documents/resubmit",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @Operation(summary = "Append a new KYC document version after rejection")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    public ApiResponseDto<KycDocumentResponse> resubmitKyc(
+            @PathVariable @Positive Long customerId,
+            @RequestParam KycDocumentType documentType,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return ApiResponseDto.success(
+                "KYC document resubmitted successfully.",
+                customerService.resubmitKyc(customerId, documentType, file)
+        );
     }
 
     @GetMapping("/{id}")

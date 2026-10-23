@@ -97,7 +97,7 @@ public class Customer extends AuditableEntity {
     private String password;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "customer_status")
+    @Column(name = "customer_status", length = 32)
     private CustomerStatus customerStatus;
 
     @NotNull(message = "KYC status cannot be null")
@@ -107,6 +107,15 @@ public class Customer extends AuditableEntity {
 
     @Column(name = "kyc_verified_at")
     private LocalDateTime kycVerifiedAt;
+
+    @Column(name = "kyc_reviewed_at")
+    private LocalDateTime kycReviewedAt;
+
+    @Column(name = "kyc_reviewed_by", length = 255)
+    private String kycReviewedBy;
+
+    @Column(name = "kyc_rejection_reason", length = 500)
+    private String kycRejectionReason;
 
     public void addAddress(Address address) {
         addresses.add(address);

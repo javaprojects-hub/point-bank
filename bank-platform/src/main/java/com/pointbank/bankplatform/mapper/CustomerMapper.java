@@ -28,6 +28,9 @@ public interface CustomerMapper {
     @Mapping(target = "customerStatus", ignore = true)
     @Mapping(target = "kycStatus", ignore = true)
     @Mapping(target = "kycVerifiedAt", ignore = true)
+    @Mapping(target = "kycReviewedAt", ignore = true)
+    @Mapping(target = "kycReviewedBy", ignore = true)
+    @Mapping(target = "kycRejectionReason", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     Customer toEntity(CustomerRequest request);
