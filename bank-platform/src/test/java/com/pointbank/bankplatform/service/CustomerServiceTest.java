@@ -1,7 +1,9 @@
 package com.pointbank.bankplatform.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +36,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class CustomerServiceTest {
@@ -50,15 +54,18 @@ class CustomerServiceTest {
     @Mock
     private KycDocumentStorageService kycDocumentStorageService;
 
+    private PasswordEncoder passwordEncoder;
     private CustomerService customerService;
 
     @BeforeEach
     void setUp() {
+        passwordEncoder = new BCryptPasswordEncoder(4);
         customerService = new CustomerServiceImpl(
                 customerRepository,
                 customerMapper,
                 kycDocumentRepository,
-                kycDocumentStorageService
+                kycDocumentStorageService,
+                passwordEncoder
         );
     }
 
@@ -67,7 +74,7 @@ class CustomerServiceTest {
         CustomerRequest request = new CustomerRequest(
                 "Asha", null, "Rao", "Female",
                 java.time.LocalDate.of(1990, 1, 1),
-                "9876543210", "ASHA@example.com", List.of()
+                "9876543210", "ASHA@example.com", "SecurePassword123", List.of()
         );
         Customer customer = new Customer();
         CustomerResponse response = new CustomerResponse(
@@ -87,6 +94,8 @@ class CustomerServiceTest {
         assertEquals(response, result);
         assertEquals("asha@example.com", customer.getEmail());
         assertEquals("9876543210", customer.getMobileNumber());
+        assertNotEquals(request.password(), customer.getPassword());
+        assertTrue(passwordEncoder.matches(request.password(), customer.getPassword()));
         assertEquals(CustomerStatus.CREATED, customer.getCustomerStatus());
         assertEquals(KycStatus.CREATED, customer.getKycStatus());
         verify(customerRepository).save(customer);

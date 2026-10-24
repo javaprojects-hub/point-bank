@@ -38,6 +38,10 @@ public record CustomerRequest(
         @Email
         String email,
 
+        @NotBlank(message = "password cannot be blank")
+        @Size(min = 8, max = 72, message = "password must be between 8 and 72 characters")
+        String password,
+
         @Valid
         List<@Valid AddressRequest> addresses
 ) {

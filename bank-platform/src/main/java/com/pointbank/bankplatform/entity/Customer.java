@@ -94,6 +94,7 @@ public class Customer extends AuditableEntity {
     @Setter(lombok.AccessLevel.NONE)
     private List<Address> addresses = new ArrayList<>();
 
+    @Column(name = "password")
     private String password;
 
     @Enumerated(EnumType.STRING)

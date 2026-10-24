@@ -53,6 +53,7 @@ app:
     jwt:
       issuer-uri: ${JWT_ISSUER_URI:}
       roles-claim: ${JWT_ROLES_CLAIM:roles}
+      secret-base64: ${JWT_SECRET_BASE64}
 
 logging:
   level:

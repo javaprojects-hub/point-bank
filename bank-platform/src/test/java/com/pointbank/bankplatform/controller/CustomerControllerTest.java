@@ -60,6 +60,7 @@ class CustomerControllerTest {
                                   "dateOfBirth": "1990-01-01",
                                   "mobileNumber": "9876543210",
                                   "email": "asha@example.com",
+                                  "password": "SecurePassword123",
                                   "addresses": []
                                 }
                                 """))
@@ -69,6 +70,7 @@ class CustomerControllerTest {
                 .andExpect(jsonPath("$.message").value("Customer created successfully."))
                 .andExpect(jsonPath("$.data.id").value(customerId.toString()))
                 .andExpect(jsonPath("$.data.customerId").value(123))
+                .andExpect(jsonPath("$.data.password").doesNotExist())
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
