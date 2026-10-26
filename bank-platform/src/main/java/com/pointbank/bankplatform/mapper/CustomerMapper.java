@@ -25,6 +25,8 @@ public interface CustomerMapper {
     @Mapping(target = "mobileNumberVerified", ignore = true)
     @Mapping(target = "emailVerified", ignore = true)
     @Mapping(target = "password", ignore = true)
+    @Mapping(target = "identityIssuer", ignore = true)
+    @Mapping(target = "identitySubject", ignore = true)
     @Mapping(target = "customerStatus", ignore = true)
     @Mapping(target = "kycStatus", ignore = true)
     @Mapping(target = "kycVerifiedAt", ignore = true)

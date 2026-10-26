@@ -1,63 +1,45 @@
 package com.pointbank.bankplatform.config;
 
-import javax.crypto.SecretKey;
-
-import javax.crypto.spec.SecretKeySpec;
-
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-
 import org.springframework.util.StringUtils;
 
-import java.util.Base64;
-
-@Configuration 
+@Configuration
 public class JwtConfiguration {
 
     @Bean
-    public SecretKey jwtSecretKey(
-            @Value("${app.security.jwt.secret-base64}") String secretBase64) {
-
-        if (!StringUtils.hasText(secretBase64)) {
-            throw new IllegalStateException(
-                    "JWT signing secret must be configured");
+    @ConditionalOnExpression(
+            "'${app.security.jwt.issuer-uri:}'.trim().length() > 0"
+                    + " && '${app.security.jwt.audience:}'.trim().length() > 0"
+    )
+    public JwtDecoder jwtDecoder(
+            @Value("${app.security.jwt.issuer-uri:}") String issuerUri,
+            @Value("${app.security.jwt.audience:}") String audience
+    ) {
+        if (!StringUtils.hasText(issuerUri) || !StringUtils.hasText(audience)) {
+            throw new IllegalStateException("JWT issuer and audience must be configured");
         }
 
-        byte[] keyBytes;
-
-        try {
-            keyBytes = Base64.getDecoder().decode(secretBase64);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalStateException(
-                    "JWT signing secret must be valid Base64", ex);
-        }
-
-        if (keyBytes.length < 32) {
-            throw new IllegalStateException(
-                    "JWT signing secret must contain at least 32 bytes");
-        }
-
-        return new SecretKeySpec(keyBytes, "HmacSHA256");
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> jwt.getAudience().contains(audience)
+                ? OAuth2TokenValidatorResult.success()
+                : OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("invalid_token", "Required JWT audience is missing", null)
+                );
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuerUri),
+                audienceValidator
+        ));
+        return decoder;
     }
-
-    @Bean
-    public JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
-        return new NimbusJwtEncoder(
-                new ImmutableSecret<>(jwtSecretKey));
-    }
-
-    @Bean
-    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
-        return NimbusJwtDecoder.withSecretKey(jwtSecretKey)
-                .macAlgorithm(MacAlgorithm.HS256)
-                .build();
-    }
-
 }

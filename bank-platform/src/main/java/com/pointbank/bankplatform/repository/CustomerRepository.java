@@ -26,6 +26,12 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     Optional<Customer> findByEmailIgnoreCase(String email);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Customer c where lower(c.email) = lower(:email)")
+    Optional<Customer> findByEmailIgnoreCaseForUpdate(@Param("email") String email);
+
+    Optional<Customer> findByIdentityIssuerAndIdentitySubject(String issuer, String subject);
+
     Optional<Customer> findByMobileNumber(String mobileNumber);
 
     boolean existsByCustomerId(Long customerId);

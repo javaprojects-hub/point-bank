@@ -1,6 +1,5 @@
 package com.pointbank.bankplatform.service;
 
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -60,6 +59,7 @@ public class CustomerServiceImpl implements CustomerService {
     private final CustomerMapper customerMapper;
     private final KycDocumentRepository kycDocumentRepository;
     private final KycDocumentStorageService kycDocumentStorageService;
+
     private final PasswordEncoder passwordEncoder;
 
     public CustomerServiceImpl(
@@ -73,7 +73,7 @@ public class CustomerServiceImpl implements CustomerService {
         this.customerMapper = customerMapper;
         this.kycDocumentRepository = kycDocumentRepository;
         this.kycDocumentStorageService = kycDocumentStorageService;
-        this.passwordEncoder = passwordEncoder;
+        this. passwordEncoder =  passwordEncoder;
     }
 
     @Override
@@ -88,19 +88,11 @@ public class CustomerServiceImpl implements CustomerService {
         ensureEmailAvailable(email, null);
         ensureMobileNumberAvailable(mobileNumber, null);
 
-        String password = request.password();
-        if (password == null || password.isBlank()) {
-            throw new InvalidRequestException("Password is required.");
-        }
-        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new InvalidRequestException("Password must not exceed 72 UTF-8 bytes.");
-        }
-
         Customer customer = customerMapper.toEntity(request);
-        customer.setPassword(passwordEncoder.encode(password));
         customer.setEmail(email);
         customer.setMobileNumber(mobileNumber);
         customer.setCustomerId(generateCustomerId());
+        customer.setPassword(passwordEncoder.encode(request.password()));
         customer.setCustomerStatus(CustomerStatus.CREATED);
         customer.setKycStatus(KycStatus.CREATED);
 

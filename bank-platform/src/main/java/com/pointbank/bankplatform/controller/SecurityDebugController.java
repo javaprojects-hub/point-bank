@@ -2,15 +2,17 @@ package com.pointbank.bankplatform.controller;
 
 import java.util.Map;
 
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@RestController 
+@Profile("debug")
+@RestController
 public class SecurityDebugController {
 
-     @GetMapping("/api/debug/auth")
+    @GetMapping("/api/debug/auth")
     public Map<String, Object> inspectAuthentication() {
 
         Authentication authentication =

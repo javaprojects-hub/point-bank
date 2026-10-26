@@ -30,11 +30,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "health"
 
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
 info:
   app:
@@ -44,16 +44,19 @@ info:
 
 
 server:
-  port: 8080
+  port: 9898
 
 app:
   kyc:
     storage-directory: ${KYC_STORAGE_DIRECTORY:./var/kyc-documents}
+
   security:
     jwt:
-      issuer-uri: ${JWT_ISSUER_URI:}
+      issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/pointbank}
+      audience: ${JWT_AUDIENCE:banking-test-client}
       roles-claim: ${JWT_ROLES_CLAIM:roles}
-      secret-base64: ${JWT_SECRET_BASE64}
+
+
 
 logging:
   level:

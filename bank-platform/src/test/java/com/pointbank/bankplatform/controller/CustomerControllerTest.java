@@ -21,22 +21,30 @@ import com.pointbank.bankplatform.dto.CustomerRequest;
 import com.pointbank.bankplatform.dto.CustomerResponse;
 import com.pointbank.bankplatform.dto.KycDocumentResponse;
 import com.pointbank.bankplatform.service.CustomerService;
+import com.pointbank.bankplatform.service.CustomerIdentityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class CustomerControllerTest {
 
     private CustomerService customerService;
+    private CustomerIdentityService customerIdentityService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         customerService = mock(CustomerService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new CustomerController(customerService)).build();
+        customerIdentityService = mock(CustomerIdentityService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new CustomerController(customerService, customerIdentityService)
+        ).build();
     }
 
     @Test
@@ -60,7 +68,6 @@ class CustomerControllerTest {
                                   "dateOfBirth": "1990-01-01",
                                   "mobileNumber": "9876543210",
                                   "email": "asha@example.com",
-                                  "password": "SecurePassword123",
                                   "addresses": []
                                 }
                                 """))
@@ -89,9 +96,24 @@ class CustomerControllerTest {
                 "file", "pan.pdf", "application/pdf", new byte[] {'%', 'P', 'D', 'F', '-'}
         );
 
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "none")
+                .issuer("https://identity.example.test")
+                .subject("customer-123")
+                .claim("email", "asha@example.com")
+                .claim("email_verified", true)
+                .build();
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(
+                        jwt,
+                        "test-token",
+                        List.of(new SimpleGrantedAuthority("ROLE_KYC_REVIEWER"))
+                );
+
         mockMvc.perform(multipart("/api/v1/customers/{customerId}/kyc/documents", customerId)
                         .file(file)
-                        .param("documentType", "PAN"))
+                        .param("documentType", "PAN")
+                        .principal(authentication))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(documentId.toString()))

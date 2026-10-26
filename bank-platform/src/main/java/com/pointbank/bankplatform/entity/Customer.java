@@ -17,6 +17,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -34,6 +35,10 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "customer",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_customer_identity",
+                columnNames = {"identity_issuer", "identity_subject"}
+        ),
         indexes = {
                 @Index(name = "idx_customer_id", columnList = "customer_id"),
                 @Index(name = "idx_mobile_number", columnList = "mobile_number")
@@ -96,6 +101,12 @@ public class Customer extends AuditableEntity {
 
     @Column(name = "password")
     private String password;
+
+    @Column(name = "identity_issuer", length = 512)
+    private String identityIssuer;
+
+    @Column(name = "identity_subject", length = 255)
+    private String identitySubject;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "customer_status", length = 32)

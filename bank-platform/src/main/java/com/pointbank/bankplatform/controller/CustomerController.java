@@ -16,6 +16,7 @@ import com.pointbank.bankplatform.dto.KycRejectionRequest;
 import com.pointbank.bankplatform.dto.KycStatusResponse;
 import com.pointbank.bankplatform.exception.ApiErrorResponse;
 import com.pointbank.bankplatform.service.CustomerService;
+import com.pointbank.bankplatform.service.CustomerIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -31,7 +32,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -61,9 +65,14 @@ public class CustomerController {
     private static final Logger LOGGER = LoggerFactory.getLogger(CustomerController.class);
 
     private final CustomerService customerService;
+    private final CustomerIdentityService customerIdentityService;
 
-    public CustomerController(CustomerService customerService) {
+    public CustomerController(
+            CustomerService customerService,
+            CustomerIdentityService customerIdentityService
+    ) {
         this.customerService = customerService;
+        this.customerIdentityService = customerIdentityService;
     }
 
     @PostMapping
@@ -113,12 +122,14 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
-    @PreAuthorize("hasRole('KYC_REVIEWER')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'KYC_REVIEWER')")
     public ApiResponseDto<KycDocumentResponse> uploadKycDocument(
             @PathVariable @Positive Long customerId,
             @RequestParam KycDocumentType documentType,
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication
     ) {
+        authorizeCustomerAccess(authentication, customerId);
         LOGGER.info("Received KYC document upload request: customerId={}, documentType={}", customerId, documentType);
         KycDocumentResponse response = customerService.uploadKycDocument(customerId, documentType, file);
         LOGGER.info(
@@ -219,8 +230,10 @@ public class CustomerController {
     public ApiResponseDto<KycDocumentResponse> resubmitKyc(
             @PathVariable @Positive Long customerId,
             @RequestParam KycDocumentType documentType,
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication
     ) {
+        authorizeCustomerAccess(authentication, customerId);
         return ApiResponseDto.success(
                 "KYC document resubmitted successfully.",
                 customerService.resubmitKyc(customerId, documentType, file)
@@ -229,6 +242,7 @@ public class CustomerController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get a customer by UUID")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'KYC_REVIEWER')")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer found"),
             @ApiResponse(
@@ -239,13 +253,16 @@ public class CustomerController {
     })
     public ApiResponseDto<CustomerResponse> getCustomerById(
             @Parameter(description = "Customer UUID", required = true)
-            @PathVariable UUID id
+            @PathVariable UUID id,
+            Authentication authentication
     ) {
+        authorizeCustomerAccess(authentication, id);
         return ApiResponseDto.success("Customer retrieved successfully.", customerService.getCustomerById(id));
     }
 
     @GetMapping("/by-customer-id/{customerId}")
     @Operation(summary = "Get a customer by public customer ID")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'KYC_REVIEWER')")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer found"),
             @ApiResponse(
@@ -261,8 +278,10 @@ public class CustomerController {
     })
     public ApiResponseDto<CustomerResponse> getCustomerByCustomerId(
             @Parameter(description = "Positive customer ID", required = true)
-            @PathVariable Long customerId
+            @PathVariable Long customerId,
+            Authentication authentication
     ) {
+        authorizeCustomerAccess(authentication, customerId);
         return ApiResponseDto.success(
                 "Customer retrieved successfully.",
                 customerService.getCustomerByCustomerId(customerId)
@@ -271,6 +290,7 @@ public class CustomerController {
 
     @GetMapping("/by-email")
     @Operation(summary = "Get a customer by email address")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer found"),
             @ApiResponse(
@@ -298,6 +318,7 @@ public class CustomerController {
 
     @GetMapping("/by-mobile-number")
     @Operation(summary = "Get a customer by mobile number")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer found"),
             @ApiResponse(
@@ -328,6 +349,7 @@ public class CustomerController {
 
     @GetMapping
     @Operation(summary = "List customers")
+    @PreAuthorize("hasRole('KYC_REVIEWER')")
     @ApiResponse(responseCode = "200", description = "Customer page returned")
     public ApiResponseDto<Page<CustomerResponse>> getAllCustomers(
             @ParameterObject
@@ -342,6 +364,7 @@ public class CustomerController {
 
     @PatchMapping("/{id}")
     @Operation(summary = "Update a customer")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'KYC_REVIEWER')")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Customer updated"),
             @ApiResponse(
@@ -363,11 +386,35 @@ public class CustomerController {
     public ApiResponseDto<CustomerResponse> updateCustomer(
             @Parameter(description = "Customer UUID", required = true)
             @PathVariable UUID id,
-            @Valid @RequestBody CustomerUpdateRequest request
+            @Valid @RequestBody CustomerUpdateRequest request,
+            Authentication authentication
     ) {
+        authorizeCustomerAccess(authentication, id);
         return ApiResponseDto.success(
                 "Customer updated successfully.",
                 customerService.updateCustomer(id, request)
         );
+    }
+
+    private void authorizeCustomerAccess(Authentication authentication, Long customerId) {
+        if (!authentication.getAuthorities().contains(
+                new SimpleGrantedAuthority("ROLE_KYC_REVIEWER"))) {
+            customerIdentityService.assertOwnsCustomerId(customerId, authenticatedJwt(authentication));
+        }
+    }
+
+    private void authorizeCustomerAccess(Authentication authentication, UUID customerId) {
+        if (!authentication.getAuthorities().contains(
+                new SimpleGrantedAuthority("ROLE_KYC_REVIEWER"))) {
+            customerIdentityService.assertOwnsCustomerUuid(customerId, authenticatedJwt(authentication));
+        }
+    }
+
+    private Jwt authenticatedJwt(Authentication authentication) {
+        if (authentication.getPrincipal() instanceof Jwt jwt) {
+            return jwt;
+        }
+        throw new org.springframework.security.access.AccessDeniedException(
+                "Authenticated identity is not a JWT.");
     }
 }
