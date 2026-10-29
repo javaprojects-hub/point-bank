@@ -29,6 +29,11 @@ public class CustomerIdentityService {
     }
 
     @Transactional
+    public Long getAuthenticatedCustomerId(Jwt jwt) {
+        return resolveCustomer(jwt).getCustomerId();
+    }
+
+    @Transactional
     public void assertOwnsCustomerUuid(UUID customerUuid, Jwt jwt) {
         Customer customer = resolveCustomer(jwt);
         if (!customer.getId().equals(customerUuid)) {

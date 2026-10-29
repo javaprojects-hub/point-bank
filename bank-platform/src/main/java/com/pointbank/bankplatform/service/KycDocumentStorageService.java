@@ -2,6 +2,7 @@ package com.pointbank.bankplatform.service;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Locale;
@@ -9,6 +10,7 @@ import java.util.UUID;
 
 import com.pointbank.bankplatform.constant.KycDocumentType;
 import com.pointbank.bankplatform.exception.InvalidRequestException;
+import com.pointbank.bankplatform.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -63,10 +65,35 @@ public class KycDocumentStorageService {
 
     public void delete(String storedFileName) {
         try {
-            Files.deleteIfExists(storageDirectory.resolve(storedFileName).normalize());
+            Files.deleteIfExists(resolveStoredFile(storedFileName));
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to remove the stored KYC document.", exception);
         }
+    }
+
+    public byte[] read(String storedFileName) {
+        Path storedFile = resolveStoredFile(storedFileName);
+        if (!Files.isRegularFile(storedFile, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(storedFile)) {
+            throw new ResourceNotFoundException("KYC document content not found.");
+        }
+
+        try {
+            return Files.readAllBytes(storedFile);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to read the stored KYC document.", exception);
+        }
+    }
+
+    private Path resolveStoredFile(String storedFileName) {
+        if (storedFileName == null || storedFileName.isBlank()) {
+            throw new InvalidRequestException("A stored KYC document filename is required.");
+        }
+        Path storedFile = storageDirectory.resolve(storedFileName).normalize();
+        if (!storedFile.getParent().equals(storageDirectory)
+                || !storedFile.getFileName().toString().equals(storedFileName)) {
+            throw new InvalidRequestException("The stored KYC document filename is invalid.");
+        }
+        return storedFile;
     }
 
     private String validateFile(MultipartFile file, String contentType) {

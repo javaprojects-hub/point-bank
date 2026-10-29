@@ -1,5 +1,6 @@
 package com.pointbank.bankplatform.service;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
@@ -52,6 +54,9 @@ class CustomerServiceTest {
     @Mock
     private KycDocumentStorageService kycDocumentStorageService;
 
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
     private CustomerService customerService;
 
     @BeforeEach
@@ -60,7 +65,8 @@ class CustomerServiceTest {
                 customerRepository,
                 customerMapper,
                 kycDocumentRepository,
-                kycDocumentStorageService
+                kycDocumentStorageService,
+                passwordEncoder
         );
     }
 
@@ -69,7 +75,7 @@ class CustomerServiceTest {
         CustomerRequest request = new CustomerRequest(
                 "Asha", null, "Rao", "Female",
                 java.time.LocalDate.of(1990, 1, 1),
-                "9876543210", "ASHA@example.com", List.of()
+                "9876543210", "ASHA@example.com", "password", List.of()
         );
         Customer customer = new Customer();
         CustomerResponse response = new CustomerResponse(
@@ -120,6 +126,28 @@ class CustomerServiceTest {
         assertEquals(CustomerStatus.CREATED, customer.getCustomerStatus());
         assertEquals(KycStatus.IN_PROGRESS, customer.getKycStatus());
         verify(kycDocumentRepository).save(any(KycDocument.class));
+    }
+
+    @Test
+    void readsKycDocumentContentOnlyForItsCustomer() {
+        Long customerId = 123L;
+        UUID documentId = UUID.randomUUID();
+        Customer customer = new Customer();
+        customer.setCustomerId(customerId);
+        KycDocument document = new KycDocument();
+        document.setStoredFileName("stored.pdf");
+        document.setMediaType("application/pdf");
+        byte[] content = new byte[] {'%', 'P', 'D', 'F', '-'};
+        when(customerRepository.findByCustomerId(customerId)).thenReturn(Optional.of(customer));
+        when(kycDocumentRepository.findByIdAndCustomer_CustomerId(documentId, customerId))
+                .thenReturn(Optional.of(document));
+        when(kycDocumentStorageService.read("stored.pdf")).thenReturn(content);
+
+        KycDocumentFileContent result = customerService.getKycDocumentContent(customerId, documentId);
+
+        assertArrayEquals(content, result.content());
+        assertEquals("application/pdf", result.mediaType());
+        verify(kycDocumentRepository).findByIdAndCustomer_CustomerId(documentId, customerId);
     }
 
     @Test

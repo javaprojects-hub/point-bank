@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -22,6 +23,7 @@ import com.pointbank.bankplatform.dto.CustomerResponse;
 import com.pointbank.bankplatform.dto.KycDocumentResponse;
 import com.pointbank.bankplatform.service.CustomerService;
 import com.pointbank.bankplatform.service.CustomerIdentityService;
+import com.pointbank.bankplatform.service.KycDocumentFileContent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -68,6 +70,7 @@ class CustomerControllerTest {
                                   "dateOfBirth": "1990-01-01",
                                   "mobileNumber": "9876543210",
                                   "email": "asha@example.com",
+                                  "password": "test-password",
                                   "addresses": []
                                 }
                                 """))
@@ -119,6 +122,38 @@ class CustomerControllerTest {
                 .andExpect(jsonPath("$.data.id").value(documentId.toString()))
                 .andExpect(jsonPath("$.data.documentType").value("PAN"))
                 .andExpect(jsonPath("$.data.mediaType").value("application/pdf"));
+    }
+
+    @Test
+    void downloadsKycDocumentContentWithSafeHeaders() throws Exception {
+        Long customerId = 123L;
+        UUID documentId = UUID.randomUUID();
+        byte[] content = new byte[] {'%', 'P', 'D', 'F', '-'};
+        when(customerService.getKycDocumentContent(customerId, documentId))
+                .thenReturn(new KycDocumentFileContent(content, "application/pdf"));
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "none")
+                .issuer("https://identity.example.test")
+                .subject("reviewer-1")
+                .build();
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                jwt,
+                "test-token",
+                List.of(new SimpleGrantedAuthority("ROLE_KYC_REVIEWER"))
+        );
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/customers/{customerId}/kyc/documents/{documentId}/content",
+                        customerId,
+                        documentId
+                ).principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition", containsString("attachment")))
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .bytes(content));
+        verify(customerService).getKycDocumentContent(customerId, documentId);
     }
 
     @Test

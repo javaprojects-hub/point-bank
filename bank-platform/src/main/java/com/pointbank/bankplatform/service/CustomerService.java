@@ -38,6 +38,8 @@ public interface CustomerService {
 
     List<KycDocumentSummaryResponse> getKycDocuments(Long customerId);
 
+    KycDocumentFileContent getKycDocumentContent(Long customerId, UUID documentId);
+
     void deleteKycDocument(Long customerId, UUID documentId);
 
     KycStatusResponse rejectKyc(Long customerId, String reason, String reviewerId);

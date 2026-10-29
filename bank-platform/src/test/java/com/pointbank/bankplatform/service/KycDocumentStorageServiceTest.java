@@ -1,6 +1,7 @@
 package com.pointbank.bankplatform.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Files;
@@ -8,6 +9,7 @@ import java.nio.file.Path;
 
 import com.pointbank.bankplatform.constant.KycDocumentType;
 import com.pointbank.bankplatform.exception.InvalidRequestException;
+import com.pointbank.bankplatform.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -20,17 +22,34 @@ class KycDocumentStorageServiceTest {
     @Test
     void storesSignatureValidatedPdfUnderGeneratedName() throws Exception {
         KycDocumentStorageService storageService = new KycDocumentStorageService(tempDirectory);
+        byte[] content = new byte[] {'%', 'P', 'D', 'F', '-', '1'};
         MockMultipartFile file = new MockMultipartFile(
-                "file", "pan.pdf", "application/pdf", new byte[] {'%', 'P', 'D', 'F', '-', '1'}
+                "file", "pan.pdf", "application/pdf", content
         );
 
         var storedDocument = storageService.store(KycDocumentType.PAN, file);
 
         assertEquals("application/pdf", storedDocument.mediaType());
         assertEquals(6, storedDocument.sizeBytes());
+        assertArrayEquals(content, storageService.read(storedDocument.storedFileName()));
         org.junit.jupiter.api.Assertions.assertTrue(
                 Files.exists(tempDirectory.resolve(storedDocument.storedFileName()))
         );
+    }
+
+    @Test
+    void rejectsPathsOutsideTheStorageDirectory() {
+        KycDocumentStorageService storageService = new KycDocumentStorageService(tempDirectory);
+        String outsideFileName = Path.of("..", "outside.pdf").toString();
+
+        assertThrows(InvalidRequestException.class, () -> storageService.read(outsideFileName));
+    }
+
+    @Test
+    void reportsMissingStoredFiles() {
+        KycDocumentStorageService storageService = new KycDocumentStorageService(tempDirectory);
+
+        assertThrows(ResourceNotFoundException.class, () -> storageService.read("missing.pdf"));
     }
 
     @Test

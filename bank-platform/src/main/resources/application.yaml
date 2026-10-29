@@ -20,7 +20,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
@@ -60,5 +60,23 @@ app:
 
 logging:
   level:
-    com.pointbank.bankplatform: DEBUG
-    org.hibernate.SQL: DEBUG
+    com.pointbank.bankplatform: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX,UTC} %-5level [%thread] [%X{requestId:-}] %logger{36} - %msg%n"
+
+pointbank:
+  account:
+    transaction-limits:
+      rolling-window: PT24H
+      savings:
+        deposits: 99999.99
+        withdrawals: 99999.99
+      salary:
+        deposits: 300000.00
+        withdrawals: 300000.00
+      # Unset current-account limits mean unrestricted transactions. Set either direction to a finite limit to constrain it.
+      current: {}
+      # Only COMPLETED transactions consume the gross-amount limit. FAILED, PENDING, and CANCELLED transactions do not.
+      # Reversals are not exposed; any future reversal must be a separate compensating transaction that consumes its direction's limit.
+      # Fees are not modeled and are therefore excluded from limit totals.

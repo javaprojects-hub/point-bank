@@ -17,6 +17,7 @@ import com.pointbank.bankplatform.dto.KycStatusResponse;
 import com.pointbank.bankplatform.exception.ApiErrorResponse;
 import com.pointbank.bankplatform.service.CustomerService;
 import com.pointbank.bankplatform.service.CustomerIdentityService;
+import com.pointbank.bankplatform.service.KycDocumentFileContent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -43,6 +44,9 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -194,6 +198,33 @@ public class CustomerController {
                 "KYC documents retrieved successfully.",
                 customerService.getKycDocuments(customerId)
         );
+    }
+
+    @GetMapping("/{customerId}/kyc/documents/{documentId}/content")
+    @Operation(summary = "Download an uploaded KYC document")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'KYC_REVIEWER')")
+    public ResponseEntity<byte[]> getKycDocumentContent(
+            @PathVariable @Positive Long customerId,
+            @PathVariable UUID documentId,
+            Authentication authentication
+    ) {
+        authorizeCustomerAccess(authentication, customerId);
+        KycDocumentFileContent file = customerService.getKycDocumentContent(customerId, documentId);
+        MediaType mediaType = MediaType.parseMediaType(file.mediaType());
+        String extension = MediaType.APPLICATION_PDF.equals(mediaType) ? ".pdf" : ".png";
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .contentLength(file.content().length)
+                .cacheControl(CacheControl.noStore())
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename("kyc-document-" + documentId + extension)
+                                .build()
+                                .toString()
+                )
+                .body(file.content());
     }
 
     @DeleteMapping("/{customerId}/kyc/documents/{documentId}")

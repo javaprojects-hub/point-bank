@@ -314,6 +314,20 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     @Override
+    public KycDocumentFileContent getKycDocumentContent(Long customerId, UUID documentId) {
+        requireCustomer(customerId);
+        if (documentId == null) {
+            throw new InvalidRequestException("KYC document ID is required.");
+        }
+        KycDocument document = kycDocumentRepository.findByIdAndCustomer_CustomerId(documentId, customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("KYC document not found."));
+        return new KycDocumentFileContent(
+                kycDocumentStorageService.read(document.getStoredFileName()),
+                document.getMediaType()
+        );
+    }
+
+    @Override
     @Transactional
     public void deleteKycDocument(Long customerId, UUID documentId) {
         Customer customer = requireCustomerForUpdate(customerId);
