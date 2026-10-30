@@ -17,7 +17,6 @@ import com.pointbank.bankplatform.constant.AccountTransactionType;
 import com.pointbank.bankplatform.constant.AccountType;
 import com.pointbank.bankplatform.constant.CustomerStatus;
 import com.pointbank.bankplatform.constant.KycStatus;
-import com.pointbank.bankplatform.config.DailyTransactionLimitProperties;
 import com.pointbank.bankplatform.entity.Account;
 import com.pointbank.bankplatform.entity.AccountTransaction;
 import com.pointbank.bankplatform.entity.Customer;
@@ -51,6 +50,9 @@ class AccountServiceTest {
     @Mock
     private DailyTransactionLimitService dailyTransactionLimitService;
 
+    @Mock
+    private OutboxService outboxService;
+
     private AccountService accountService;
 
     @BeforeEach
@@ -61,6 +63,7 @@ class AccountServiceTest {
                 customerRepository,
                 identifierGenerator,
                 dailyTransactionLimitService,
+                outboxService,
                 java.time.Clock.fixed(
                         java.time.Instant.parse("2026-10-29T00:00:00Z"),
                         java.time.ZoneOffset.UTC
@@ -199,6 +202,14 @@ class AccountServiceTest {
         assertEquals(new BigDecimal("75.00"), destination.getAvailableBalance());
         assertEquals(new BigDecimal("75.00"), destination.getLedgerBalance());
         verify(transactionRepository).saveAllAndFlush(any());
+        verify(outboxService).recordMoneyTransferred(
+                response.transferReference(),
+                source.getAccountNumber(),
+                destination.getAccountNumber(),
+                new BigDecimal("25.00"),
+                "INR",
+                java.time.Instant.parse("2026-10-29T00:00:00Z")
+        );
         verify(dailyTransactionLimitService).assertWithinLimit(
                 source,
                 AccountTransactionType.TRANSFER_OUT,
@@ -246,6 +257,9 @@ class AccountServiceTest {
         assertEquals(new BigDecimal("100.00"), destination.getAvailableBalance());
         verify(transactionRepository).saveAndFlush(any(AccountTransaction.class));
         verify(transactionRepository, never()).saveAllAndFlush(any());
+        verify(outboxService, never()).recordMoneyTransferred(
+                any(), any(), any(), any(), any(), any()
+        );
     }
 
     @Test
@@ -283,6 +297,9 @@ class AccountServiceTest {
         assertEquals("credit-reference", response.credit().transactionReference());
         assertEquals(new BigDecimal("100.00"), source.getAvailableBalance());
         verify(transactionRepository, never()).saveAllAndFlush(any());
+        verify(outboxService, never()).recordMoneyTransferred(
+                any(), any(), any(), any(), any(), any()
+        );
     }
 
     @Test
@@ -316,6 +333,9 @@ class AccountServiceTest {
                 )
         );
         verify(transactionRepository, never()).saveAllAndFlush(any());
+        verify(outboxService, never()).recordMoneyTransferred(
+                any(), any(), any(), any(), any(), any()
+        );
     }
 
     @Test
@@ -344,6 +364,9 @@ class AccountServiceTest {
         );
         verify(transactionRepository, never()).saveAndFlush(any(AccountTransaction.class));
         verify(transactionRepository, never()).saveAllAndFlush(any());
+        verify(outboxService, never()).recordMoneyTransferred(
+                any(), any(), any(), any(), any(), any()
+        );
     }
 
     @Test

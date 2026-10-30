@@ -61,6 +61,7 @@ public class AccountServiceImpl implements AccountService {
     private final CustomerRepository customerRepository;
     private final AccountIdentifierGenerator identifierGenerator;
     private final DailyTransactionLimitService dailyTransactionLimitService;
+    private final OutboxService outboxService;
     private final Clock clock;
 
     @Autowired
@@ -70,6 +71,7 @@ public class AccountServiceImpl implements AccountService {
             CustomerRepository customerRepository,
             AccountIdentifierGenerator identifierGenerator,
             DailyTransactionLimitService dailyTransactionLimitService,
+            OutboxService outboxService,
             Clock clock
     ) {
         this.accountRepository = accountRepository;
@@ -77,6 +79,7 @@ public class AccountServiceImpl implements AccountService {
         this.customerRepository = customerRepository;
         this.identifierGenerator = identifierGenerator;
         this.dailyTransactionLimitService = dailyTransactionLimitService;
+        this.outboxService = outboxService;
         this.clock = clock;
     }
 
@@ -331,6 +334,14 @@ public class AccountServiceImpl implements AccountService {
         source.setLedgerBalance(sourceLedgerBalanceAfter);
         destination.setAvailableBalance(destinationBalanceAfter);
         destination.setLedgerBalance(destinationLedgerBalanceAfter);
+        outboxService.recordMoneyTransferred(
+                transferReference,
+                source.getAccountNumber(),
+                destination.getAccountNumber(),
+                amount,
+                source.getCurrencyCode(),
+                transactionTime
+        );
         logAfterCommit(
                 "Internal account transfer completed: transferReference={}, currency={}",
                 transferReference,

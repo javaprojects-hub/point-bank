@@ -11,7 +11,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/point_bank}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:Pranathi@2005}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -19,18 +19,41 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: true
     open-in-view: false
 
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${OUTBOX_CONSUMER_GROUP_ID:pointbank-money-transfer-consumer}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 8000
+
 management:
   endpoints:
     web:
       exposure:
-        include: "health"
+        include: "health,metrics"
 
   endpoint:
     health:
@@ -66,6 +89,24 @@ logging:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX,UTC} %-5level [%thread] [%X{requestId:-}] %logger{36} - %msg%n"
 
 pointbank:
+  outbox:
+    enabled: ${OUTBOX_PUBLISHER_ENABLED:true}
+    topic: ${OUTBOX_KAFKA_TOPIC:pointbank.money-transferred.v1}
+    batch-size: ${OUTBOX_BATCH_SIZE:10}
+    poll-interval: ${OUTBOX_POLL_INTERVAL:PT1S}
+    lease-duration: ${OUTBOX_LEASE_DURATION:PT2M}
+    acknowledgment-timeout: ${OUTBOX_ACKNOWLEDGMENT_TIMEOUT:PT10S}
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:10}
+    base-retry-delay: ${OUTBOX_BASE_RETRY_DELAY:PT1S}
+    max-retry-delay: ${OUTBOX_MAX_RETRY_DELAY:PT1M}
+    consumer:
+      enabled: ${OUTBOX_CONSUMER_ENABLED:true}
+      group-id: ${OUTBOX_CONSUMER_GROUP_ID:pointbank-money-transfer-consumer}
+      dead-letter-topic: ${OUTBOX_DLT_TOPIC:pointbank.money-transferred.v1.dlt}
+      max-retries: ${OUTBOX_CONSUMER_MAX_RETRIES:5}
+      retry-interval: ${OUTBOX_CONSUMER_RETRY_INTERVAL:PT2S}
+      acknowledgment-timeout: ${OUTBOX_CONSUMER_ACKNOWLEDGMENT_TIMEOUT:PT10S}
+
   account:
     transaction-limits:
       rolling-window: PT24H

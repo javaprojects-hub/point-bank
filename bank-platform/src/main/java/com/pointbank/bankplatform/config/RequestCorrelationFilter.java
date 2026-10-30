@@ -21,7 +21,7 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID_ATTRIBUTE = RequestCorrelationFilter.class.getName() + ".requestId";
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
-    private static final String MDC_KEY = "requestId";
+    public static final String MDC_REQUEST_ID = "requestId";
     private static final Pattern SAFE_REQUEST_ID = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
     @Override
@@ -37,11 +37,11 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
 
         request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
-        MDC.put(MDC_KEY, requestId);
+        MDC.put(MDC_REQUEST_ID, requestId);
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove(MDC_KEY);
+            MDC.remove(MDC_REQUEST_ID);
         }
     }
 }
